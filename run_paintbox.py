@@ -20,14 +20,31 @@ def make_paintbox_model(wave, name="test", porder=45, nssps=1,
     # Directory where you store your CvD models
     base_dir = context.cvd_dir
     # Locationg where pre-processed models will be stored for paintbox
-    store = os.path.join(context.home_dir,
-                          f"templates/CvD18_sig{sigma}_{name}.fits")
+#     store = os.path.join(context.home_dir,
+#                           f"templates/CvD18_sig{sigma}_{name}.fits")
+    #print(store)
+    #/Users/afeldmei/Magellan/Baade/analysis/paintbox/run_lowmassgal/templates/CvD18_sig180_blue.fits
     # Defining wavelength for templates
     velscale = sigma / 2
     wmin = wave.min() - 200
     wmax = wave.max() + 50
+#     print(velscale,wmin,wmax)
+    #90.0 3800.4461010663863 7187.813069255869
+    #50.0 7900.3788300139095 8889.242808153444
+#     print(min(wave),max(wave))
+    #4000.4461010663863 7137.813069255869
+    #8100.3788300139095 8839.242808153444
+    # Locationg where pre-processed models will be stored for paintbox
+    store = os.path.join(context.home_dir,
+                          f"templates/CvD18_sig{sigma}_{name}_ll{round(wmin)}_{round(wmax)}_{round(velscale)}.fits")
+    print(store)
+#/Users/afeldmei/Magellan/Baade/analysis/paintbox/run_lowmassgal/templates/CvD18_sig180_blue_ll3800_7188_90.fits
+#/Users/afeldmei/Magellan/Baade/analysis/paintbox/run_lowmassgal/templates/CvD18_sig100_red_ll7900_8889_50.fits
+    #    """ Returns a log-rebinned wavelength dispersion with constant velocity. 
     twave = disp2vel([wmin, wmax], velscale)
-
+#    print(shape(twave),min(twave),max(twave))
+#    (2122,) 3800.8789941880696 7184.837161264701
+#    (707,) 7900.443033968077 8887.68813814821
     ssp = CvD18(twave, sigma=sigma, store=store, libpath=context.cvd_dir)
     limits = ssp.limits
     if nssps > 1:
@@ -36,6 +53,7 @@ def make_paintbox_model(wave, name="test", porder=45, nssps=1,
             p0.parnames = [f"w_{i+1}"]
             s = copy.deepcopy(ssp)
             s.parnames = ["{}_{}".format(_, i+1) for _ in s.parnames]
+            print(shape(p0),shape(s))
             if i == 0:
                 pop = p0 * s
             else:
@@ -243,7 +261,8 @@ def run_paintbox(galaxy, spec, dlam=100, nsteps=5000, loglike="normal2", nssps=1
         wmin = wave[mask==0].min()
         wmax = wave[mask==0].max()
         porder = int((wmax - wmin) / dlam)
-#         print(shape(seds),size(wave),nssps,side,target_res[i],porder)
+       # print(shape(seds),size(wave),nssps,side,target_res[i],porder)
+       # (0,) 2894 2 blue 180 31
         # Building paintbox model
         sed, limits = make_paintbox_model(wave, nssps=nssps, name=side,
                                   sigma=target_res[i], porder=porder)

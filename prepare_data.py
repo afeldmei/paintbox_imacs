@@ -5,10 +5,10 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
 from astropy.io import fits
 from astropy.table import Table
 import astropy.constants as const
-from ppxf import ppxf_util
 from spectres import spectres
 
 from paintbox.utils import broad2res, disp2vel
@@ -21,12 +21,19 @@ def prepare_spectrum(spec_file, outfile, overwrite=False):
         return
     wave, flux, fluxerr, mask, res_kms = np.loadtxt(spec_file, unpack=True)
     mask = mask.astype(np.bool).astype(np.int)
+    # oversample = np.ceil(10000 / len(wave)).astype(int)
+    # if oversample > 1:
+    #     w = np.linspace(wave[0], wave[-1], len(wave) * oversample)
     # Interpolating flux / fluxerr
     idx = np.where(mask > 0)[0]
     f_interp = interp1d(wave[idx], flux[idx], fill_value="extrapolate")
     flux = f_interp(wave)
     ferr_interp = interp1d(wave[idx], fluxerr[idx], fill_value="extrapolate")
     fluxerr = ferr_interp(wave)
+    res_interp = interp1d(wave[idx], res_kms[idx], fill_value="extrapolate")
+    res_kms = res_interp(wave)
+    mask_interp = interp1d(wave[idx], mask[idx], fill_value="nearest")
+    mask = res_interp(wave)
     # Calculating resolution in FWHM
     c = const.c.to("km/s").value
     fwhms = res_kms / c * wave * 2.355
@@ -53,19 +60,25 @@ def prepare_spectrum(spec_file, outfile, overwrite=False):
         fbroad, fbroaderr = broad2res(w, f, fwhm, target_fwhm, fluxerr=ferr)
         # Resampling data
         owave = disp2vel([w[0], w[-1]], velscale[i])
+        oflux, ofluxerr = spectres(owave, w, fbroad, spec_errs=fbroaderr)
+#        print(mean(ferr),mean(fbroaderr))#,mean(ofluxerr))
 
-#        oflux, ofluxerr = spectres(owave, w, fbroad, spec_errs=fbroaderr)
-
-#         plot(wave,fluxerr)
-#         plot(w,ferr)
+#        plot(wave,fluxerr)
+#        plot(owave,ofluxerr)
+#        plot(w,ferr)
+#         plot(owave,ofluxerr)
 #         plot(w,fbroaderr)
 #         plot(w,f)
 #         plot(w,fbroad)
-        oflux = spectres(owave, w, fbroad)
-        ofluxerr = spectres(owave, w, fbroaderr)
+#         oflux = spectres(owave, w, fbroad)
+#        ofluxerr = spectres(owave, w, fbroaderr)
+#        print(mean(ofluxerr))
+#        plot(owave,ofluxerr)
+        ofluxerr = gaussian_filter1d(ofluxerr, 3)
+#        print(mean(ofluxerr))
         omask = spectres(owave, w, m).astype(np.int).astype(np.bool)
         obsmask = -1 * (omask.astype(np.int) - 1)
-#         plot(owave,ofluxerr)
+#        plot(owave,ofluxerr)
 #         plot(owave,oflux)
 #         plot(w,m)
 #         plot(owave,omask)
@@ -82,22 +95,30 @@ def prepare_sample(sample, overwrite=False):
     for galaxy in sample:
         wdir = os.path.join(context.home_dir, "data", galaxy)
         os.chdir(wdir)
-        specall=[]
-    #    spec_file=[]
-        for file in glob.glob("*_*noconv.txt"):
-            specall.append(file)
-            temp = os.path.join(wdir, file)
-    #        spec_file.append(temp)
-            spec_file=temp
+#         spec_files = [_ for _ in os.listdir(wdir) if _.endswith("1_1arc_bg_noconv.txt")]
+        spec_files = [_ for _ in os.listdir(wdir) if _.endswith("_bg_noconv.txt")]
+        for spec_file in spec_files:
             print(spec_file)
-            outfile=spec_file.replace("_bg_noconv.txt",".fits")
+            outfile = os.path.join(wdir, spec_file.replace("_bg_noconv.txt", ".fits"))
             print(outfile)
             prepare_spectrum(spec_file, outfile, overwrite=True)
-#         spec_file = os.path.join(wdir, f"{galaxy}_1_1arc_bg_noconv.txt")
-#         if not os.path.exists(spec_file):
-#             continue
-#         outfile = os.path.join(wdir, f"{galaxy}_spec.fits")
-#         prepare_spectrum(spec_file, outfile, overwrite=True)
+
+#         specall=[]
+#     #    spec_file=[]
+#         for file in glob.glob("*_*noconv.txt"):
+#             specall.append(file)
+#             temp = os.path.join(wdir, file)
+#     #        spec_file.append(temp)
+#             spec_file=temp
+#             print(spec_file)
+#             outfile=spec_file.replace("_bg_noconv.txt",".fits")
+#             print(outfile)
+#             prepare_spectrum(spec_file, outfile, overwrite=True)
+# #         spec_file = os.path.join(wdir, f"{galaxy}_1_1arc_bg_noconv.txt")
+# #         if not os.path.exists(spec_file):
+# #             continue
+# #         outfile = os.path.join(wdir, f"{galaxy}_spec.fits")
+# #         prepare_spectrum(spec_file, outfile, overwrite=True)
 
     os.chdir('../../scripts_v2')
     
