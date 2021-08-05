@@ -30,10 +30,6 @@ def prepare_spectrum(spec_file, outfile, overwrite=False):
     flux = f_interp(wave)
     ferr_interp = interp1d(wave[idx], fluxerr[idx], fill_value="extrapolate")
     fluxerr = ferr_interp(wave)
-    res_interp = interp1d(wave[idx], res_kms[idx], fill_value="extrapolate")
-    res_kms = res_interp(wave)
-    mask_interp = interp1d(wave[idx], mask[idx], fill_value="nearest")
-    mask = res_interp(wave)
     # Calculating resolution in FWHM
     c = const.c.to("km/s").value
     fwhms = res_kms / c * wave * 2.355
@@ -99,58 +95,14 @@ def prepare_sample(sample, overwrite=False):
         spec_files = [_ for _ in os.listdir(wdir) if _.endswith("_bg_noconv.txt")]
         for spec_file in spec_files:
             print(spec_file)
-            outfile = os.path.join(wdir, spec_file.replace("_bg_noconv.txt", ".fits"))
+            outfile = os.path.join(wdir, spec_file.replace("_bg_noconv.txt", "_bg_noconv.fits"))
             print(outfile)
             prepare_spectrum(spec_file, outfile, overwrite=True)
-
-#         specall=[]
-#     #    spec_file=[]
-#         for file in glob.glob("*_*noconv.txt"):
-#             specall.append(file)
-#             temp = os.path.join(wdir, file)
-#     #        spec_file.append(temp)
-#             spec_file=temp
-#             print(spec_file)
-#             outfile=spec_file.replace("_bg_noconv.txt",".fits")
-#             print(outfile)
-#             prepare_spectrum(spec_file, outfile, overwrite=True)
-# #         spec_file = os.path.join(wdir, f"{galaxy}_1_1arc_bg_noconv.txt")
-# #         if not os.path.exists(spec_file):
-# #             continue
-# #         outfile = os.path.join(wdir, f"{galaxy}_spec.fits")
-# #         prepare_spectrum(spec_file, outfile, overwrite=True)
-
     os.chdir('../../scripts_v2')
     
     
 if __name__ == "__main__":
     galaxies = ["NGC4033","NGC4387","NGC4458"]
-    prepare_sample(galaxies)
+    prepare_sample(galaxies, overwrite=True)
     
     
-# if __name__ == "__main__":
-#     wdir1 = os.path.join(context.home_dir, "data/NGC4033")
-#     os.chdir(wdir1)
-#     specall=[]
-# #    spec_file=[]
-#     for file in glob.glob("*_*noconv.txt"):
-#         specall.append(file)
-#         temp = os.path.join(wdir1, file)
-# #        spec_file.append(temp)
-#         spec_file=temp
-#         print(spec_file)
-#         outfile=spec_file.replace("_bg_noconv.txt",".fits")
-#         print(outfile)
-#         prepare_spectrum(spec_file, outfile, overwrite=True)
-
-
-
-#     outfile=spec_file
-#     outfile=[w.replace("_bg_noconv.txt",".fits") for w in outfile]
-# 
-#     prepare_spectrum(spec_file, outfile, overwrite=True)
-
-#     wdir = os.path.join(context.home_dir, "data/NGC7144")
-#     spec_file = os.path.join(wdir, "NGC7144_1_1arc_bg_noconv.txt")
-#     outfile = os.path.join(wdir, "NGC7144_spec.fits")
-#     prepare_spectrum(spec_file, outfile, overwrite=True)
