@@ -12,9 +12,11 @@ import emcee
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from ppxf import ppxf_util
+import seaborn as sns
 import paintbox as pb
 from paintbox.utils import CvD18, disp2vel
 import h5py
+import corner
 
 import context
 
@@ -378,7 +380,8 @@ def set_priors(parnames, limits, linenames, vsyst, nssps=1):
         elif name == "w":
             priors[parname] = stats.uniform(loc=0, scale=1)#weights uniform between 0 and 1
         elif name in linenames:
-            priors[parname] = stats.expon(loc=0, scale=0.5)#favors low values>~0; make even stronger by decreasing scale. 
+#             priors[parname] = stats.expon(loc=0, scale=0.5)#favors low values>~0; make even stronger by decreasing scale. 
+            priors[parname] = stats.expon(loc=0, scale=0.2)#favors low values>~0; make even stronger by decreasing scale. 
         elif name in ["pred", "pblue"]:
             porder = int(parname.split("_")[1])
             if porder == 0:
@@ -460,8 +463,8 @@ def weighted_traces(parnames, trace, nssps):
 
 def make_table(trace, outtab):
     data = np.array([trace[p].data for p in trace.colnames]).T
-    print(shape(data))
-    print(size(data))
+#     print(shape(data))
+#     print(size(data))
     v = np.percentile(data, 50, axis=0)
     vmax = np.percentile(data, 84, axis=0)
     vmin = np.percentile(data, 16, axis=0)
@@ -533,9 +536,78 @@ def plot_fitting(waves, fluxes, fluxerrs, masks, seds, trace, output,
     plt.close(fig)
     return
 
+def plot_corner(trace, outroot, title=None, redo=False):
+    labels = {"imf": r"$\Gamma_b$", "Z": "[Z/H]", "T": "Age (Gyr)",
+              "alphaFe": r"[$\alpha$/Fe]", "NaFe": "[Na/Fe]",
+              "Age": "Age (Gyr)", "x1": "$x_1$", "x2": "$x_2$", "Ca": "[Ca/H]",
+              "Fe": "[Fe/H]", "Na": "[Na/H]",
+              "K": "[K/H]", "C": "[C/H]", "N": "[N/H]",
+              "Mg": "[Mg/H]", "Si": "[Si/H]", "Ca": "[Ca/H]", "Ti": "[Ti/H]"}
+    title = "" if title is None else title
+    output = "{}_corner.png".format(outroot)
+    if os.path.exists(output) and not redo:
+        return
+    N = len(trace.colnames)
+    params = trace.colnames
+    data = np.stack([trace[p] for p in params]).T
+    v = np.percentile(data, 50, axis=0)
+    vmax = np.percentile(data, 84, axis=0)
+    vmin = np.percentile(data, 16, axis=0)
+    vuerr = vmax - v
+    vlerr = v - vmin
+    title = [title]
+    for i, param in enumerate(params):
+        parname = param.replace("_weighted", "")
+        s = "{0}$={1:.2f}^{{+{2:.2f}}}_{{-{3:.2f}}}$".format(
+            labels[parname], v[i], vuerr[i], vlerr[i])
+        title.append(s)
+    fig, axs = plt.subplots(N, N, figsize=(3.54, 3.5))
+    grid = np.array(np.meshgrid(params, params)).reshape(2, -1).T
+    for i, (p1, p2) in enumerate(grid):
+        p1name = p1.replace("_weighted", "")
+        p2name = p2.replace("_weighted", "")
+        i1 = params.index(p1)
+        i2 = params.index(p2)
+        ax = axs[i // N, i % N]
+        ax.tick_params(axis="both", which='major',
+                       labelsize=4)
+        if i // N < i % N:
+            ax.set_visible(False)
+            continue
+        x = data[:,i1]
+        if p1 == p2:
+            sns.kdeplot(x, shade=True, ax=ax, color="C0")
+        else:
+            y = data[:, i2]
+            sns.kdeplot(x, y, shade=True, ax=ax, cmap="Blues")
+            ax.axhline(np.median(y), ls="-", c="k", lw=0.5)
+            ax.axhline(np.percentile(y, 16), ls="--", c="k", lw=0.5)
+            ax.axhline(np.percentile(y, 84), ls="--", c="k", lw=0.5)
+        if i > N * (N - 1) - 1:
+            ax.set_xlabel(labels[p1name], size=7)
+        else:
+            ax.xaxis.set_ticklabels([])
+        if i in np.arange(0, N * N, N)[1:]:
+            ax.set_ylabel(labels[p2name], size=7)
+        else:
+            ax.yaxis.set_ticklabels([])
+        ax.axvline(np.median(x), ls="-", c="k", lw=0.5)
+        ax.axvline(np.percentile(x, 16), ls="--", c="k", lw=0.5)
+        ax.axvline(np.percentile(x, 84), ls="--", c="k", lw=0.5)
+    plt.text(0.6, 0.7, "\n".join(title), transform=plt.gcf().transFigure,
+             size=8)
+    plt.subplots_adjust(left=0.12, right=0.995, top=0.98, bottom=0.08,
+                        hspace=0.04, wspace=0.04)
+    fig.align_ylabels()
+    for fmt in ["png", "pdf"]:
+        output = "{}_corner.{}".format(outroot, fmt)
+        plt.savefig(output, dpi=300)
+    plt.close(fig)
+    return
+    
+    
 def run_paintbox(galaxy, spec, V0s, dlam=100, nsteps=5000, loglike="normal2",
-                 nssps=1,
-                 target_res=None):
+                 nssps=1, target_res=None):
     """ Run paintbox. """
     global logp, priors
 #     target_res = [200, 100] if target_res is None else target_res
@@ -586,6 +658,7 @@ def run_paintbox(galaxy, spec, V0s, dlam=100, nsteps=5000, loglike="normal2",
 
         idx = np.where((wave < wranges[i][0]) | (wave > wranges[i][1]))[0]
         mask[idx] = False
+        mask[idx] = 1 	#6.8.21 anja, set to 1 as is bad value
 
         # Masking all remaining locations where flux is NaN
         mask[np.isnan(flux * fluxerr)] = 1
@@ -607,6 +680,11 @@ def run_paintbox(galaxy, spec, V0s, dlam=100, nsteps=5000, loglike="normal2",
         sed, limits, lines = make_paintbox_model(wave, store,
                               nssps=nssps, name=side, sigma=sigma,
                               porder=porder)
+# # anja mask edges of flux, as flux drops
+# #         plot(wave,flux)
+#         mask[0:10]=1
+#         mask[-10:]=1
+#         plot(wave[mask == 0],flux[mask == 0])
         logp = pb.Normal2LogLike(flux, sed, obserr=fluxerr, mask=mask)
         logps.append(logp)
         waves.append(wave)
@@ -653,7 +731,7 @@ def run_paintbox(galaxy, spec, V0s, dlam=100, nsteps=5000, loglike="normal2",
         os.remove(tmp_db)	#deletes existing result file. dangerous. forces new fit each time
 
     outdb = os.path.join(wdir, dbname)
-#    print(outdb)
+    print(outdb)
     if not os.path.exists(outdb):
         print('run mcmc')
         run_sampler(tmp_db, nsteps=nsteps)
@@ -663,22 +741,71 @@ def run_paintbox(galaxy, spec, V0s, dlam=100, nsteps=5000, loglike="normal2",
     if context.node in context.lai_machines: #not allowing post-processing @LAI
         return
     reader = emcee.backends.HDFBackend(outdb)#, read_only=True
+    shape(reader)
     tracedata = reader.get_chain(discard=int(nsteps * 0.9), flat=True, thin=100)	#discard 90% of steps, only every 100. step
-    tracedata = reader.get_chain(discard=int(nsteps * 0.5), flat=True, thin=100)	#discard 50% of steps, only every 100. step
+    print(logp.parnames)
+    nvar=len(logp.parnames)
+    print('nvariables',nvar)
+    burnin=int(nsteps * 0.5)
+    thin=100
+    tracedata = reader.get_chain(discard=burnin, flat=True, thin=thin)	#discard 50% of steps, only every 100. step
+    print('tracedata shape')
     print(shape(tracedata))
+    print(shape(logp.parnames))
+
     trace = Table(tracedata, names=logp.parnames)
+    print(len(trace))
     if nssps > 1:
         ssp_pars = list(limits.keys())
         wtrace = weighted_traces(ssp_pars, trace, nssps)
         trace = hstack([trace, wtrace])
+    print((ssp_pars))#['Z', 'Age', 'x1', 'x2', 'C', 'N', 'Na', 'Mg', 'Si', 'Ca', 'Ti', 'Fe', 'K', 'Cr', 'Mn', 'Ba', 'Ni', 'Co', 'Eu', 'Sr', 'V', 'Cu', 'a/Fe']
+    print(len(wtrace))
+    print(len(trace))
     outtab = os.path.join(outdb.replace(".h5", "_results.fits"))
 #    print(outtab)
 #    print(trace)
     make_table(trace, outtab)
-    # # Plot fit
+    # Plot fit
     outimg = outdb.replace(".h5", "_fit.png")
     plot_fitting(waves, fluxes, fluxerrs, masks, seds, trace, outimg,
                  skylines=skylines)
+#     print(shape(wave))
+#     print(shape(fluxes))
+#     print(shape(seds))
+#     print(shape(masks))
+#     print(max(masks),min(masks))
+
+    # Make corner plot
+    # Choose columns for plot
+    cols_for_corner = [_ for _ in trace.colnames if _.endswith("weighted")]
+    corner_table = trace[cols_for_corner]
+    corner_file = outdb.replace(".h5", "_corner") # It will be saved in png/pdf
+    plot_corner(corner_table, corner_file, title=galaxy, redo=False)
+    
+        #https://emcee.readthedocs.io/en/latest/tutorials/monitor/
+    
+    samples = reader.get_chain(discard=burnin).reshape((-1,nvar))
+    print('samples shape')
+    print(shape(samples))
+    #sampler.chain[:, burnin:, :].reshape((-1, ndim))
+    log_prob_samples = reader.get_log_prob(discard=burnin, flat=True, thin=thin)
+#     log_prior_samples = reader.get_blobs(discard=burnin, flat=True, thin=thin)
+#     log_prior_samples = reader.get_blobs(flat=True)
+    print("burn-in: {0}".format(burnin))
+    print("thin: {0}".format(thin))
+    print("flat chain shape: {0}".format(tracedata.shape))
+    print("flat log prob shape: {0}".format(log_prob_samples.shape))
+#     print(shape(log_prior_samples))
+#  #   print("flat log prior shape: {0}".format(log_prior_samples.shape))
+#     samples = np.concatenate((tracedata, log_prob_samples[:, None]), axis=1)
+#     all_samples = np.concatenate((tracedata, log_prob_samples[:, None], log_prior_samples[:, None]), axis=1)
+#     labels = logp.parnames#list(map(r"$\theta_{{{0}}}$".format, range(1, ndim + 1)))
+#    labels += ["log prob", "log prior"]
+
+    xarr=np.arange(size(log_prob_samples))
+#     plot(xarr,log_prob_samples)
+
 
 
 if __name__ == "__main__":
@@ -701,4 +828,4 @@ if __name__ == "__main__":
         V0 = V0s[galaxy]
         for spec in specs:
 #            print(galaxy,spec)
-            run_paintbox(galaxy, spec, V0, nssps=2, nsteps=1000)
+            run_paintbox(galaxy, spec, V0, nssps=2, nsteps=6000)

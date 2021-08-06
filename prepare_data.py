@@ -79,6 +79,11 @@ def prepare_spectrum(spec_file, outfile, overwrite=False):
 #         plot(w,m)
 #         plot(owave,omask)
 #         plot(owave,obsmask)
+# anja mask edges of flux, as flux drops
+#         plot(wave,flux)
+        obsmask[0:10]=1
+        obsmask[-10:]=1
+
         table = Table([owave, oflux, ofluxerr, obsmask], names=names)
         hdu = fits.BinTableHDU(table)
         hdulist.append(hdu)
@@ -97,7 +102,7 @@ def prepare_sample(sample, overwrite=False):
             print(spec_file)
             outfile = os.path.join(wdir, spec_file.replace("_bg_noconv.txt", "_bg_noconv.fits"))
             print(outfile)
-            prepare_spectrum(spec_file, outfile, overwrite=True)
+            prepare_spectrum(spec_file, outfile, overwrite=overwrite)
     os.chdir('../../scripts_v2')
     
     
